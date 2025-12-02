@@ -1,0 +1,1 @@
+hf download ILSVRC/imagenet-1k --include "data/test-00000-of-00028.parquet" --repo-type dataset --local-dir ./data/imagenet

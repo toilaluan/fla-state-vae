@@ -9,17 +9,27 @@ from torch import nn
 
 def _patchify_latents(latents):
     batch_size, num_channels_latents, height, width = latents.shape
-    latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
+    latents = latents.view(
+        batch_size, num_channels_latents, height // 2, 2, width // 2, 2
+    )
     latents = latents.permute(0, 1, 3, 5, 2, 4)
-    latents = latents.reshape(batch_size, num_channels_latents * 4, height // 2, width // 2)
+    latents = latents.reshape(
+        batch_size, num_channels_latents * 4, height // 2, width // 2
+    )
     return latents
+
 
 def _pack_latents(latents, batch_size, num_channels_latents, height, width):
-    latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
+    latents = latents.view(
+        batch_size, num_channels_latents, height // 2, 2, width // 2, 2
+    )
     latents = latents.permute(0, 2, 4, 1, 3, 5)
-    latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
+    latents = latents.reshape(
+        batch_size, (height // 2) * (width // 2), num_channels_latents * 4
+    )
 
     return latents
+
 
 class FlaEncoder(torch.nn.Module):
     def __init__(
@@ -67,7 +77,10 @@ class FlaEncoder(torch.nn.Module):
         hidden_states = self.norm2(hidden_states)
         cache = Cache()
         outputs = self.kda_model(
-            inputs_embeds=hidden_states, attention_mask=attention_mask, past_key_values=cache, use_cache=True
+            inputs_embeds=hidden_states,
+            attention_mask=attention_mask,
+            past_key_values=cache,
+            use_cache=True,
         )
         states = outputs.past_key_values[-1]  # shape: (B, C, H, W)
 
@@ -76,13 +89,19 @@ class FlaEncoder(torch.nn.Module):
 
 if __name__ == "__main__":
     # Example usage
-    from diffusers import AutoencoderKL
-    encoder = FlaEncoder(
-        pretrained_feature_extractor="gpt2",
-        vae_latent_wh=128,
-        vae_latent_c=32,
-        n_kda_layers=2,
-    ).cuda().train()
+    from diffusers import AutoencoderKL, AutoImageProcessor
+    from PIL import Image
+
+    encoder = (
+        FlaEncoder(
+            pretrained_feature_extractor="gpt2",
+            vae_latent_wh=128,
+            vae_latent_c=32,
+            n_kda_layers=2,
+        )
+        .cuda()
+        .train()
+    )
     input_ids = torch.randint(0, 50257, (1, 10)).cuda()  # Example input
     attention_mask = torch.ones((1, 10)).cuda()  # Example attention mask
     with torch.no_grad():
@@ -90,9 +109,18 @@ if __name__ == "__main__":
         output = _pack_latents(output, *output.shape)
     print("Output shape:", output.shape)  # Expected shape: (2, 128, 32, 32)
 
-    vae = AutoencoderKL.from_pretrained("black-forest-labs/FLUX.2-dev", subfolder="vae").cuda().eval()
-
-    image = torch.zeros((1, 3, 1024, 1024)).cuda()  # Example image
+    vae = (
+        AutoencoderKL.from_pretrained("black-forest-labs/FLUX.2-dev", subfolder="vae")
+        .cuda()
+        .eval()
+    )
+    processor = AutoImageProcessor.from_pretrained(
+        "black-forest-labs/FLUX.2-dev", subfolder="vae"
+    )
+    image = Image.new("RGB", (1024, 1024), color="white")
+    image = processor(images=image, return_tensors="pt")
+    image = image.to("cuda").pixel_values
+    print(image.shape)  # torch.Size([1, 3, 1024, 1024])
     latent = vae.encode(image).latent_dist.sample() * vae.config.scaling_factor
     latent = _pack_latents(latent, *latent.shape)
     print("Latent shape:", latent.shape)  #
@@ -101,16 +129,18 @@ if __name__ == "__main__":
 
     from .denoiser import TransformerDenoiser
 
-    denoiser = TransformerDenoiser(
-        patch_size=2,
-        in_channels=128,
-        out_channels=32,
-        num_layers=4,
-        attention_head_dim=32,
-        num_attention_heads=16,
-    ).cuda().train()
+    denoiser = (
+        TransformerDenoiser(
+            patch_size=2,
+            in_channels=128,
+            out_channels=32,
+            num_layers=4,
+            attention_head_dim=32,
+            num_attention_heads=16,
+        )
+        .cuda()
+        .train()
+    )
 
     noise_pred = denoiser(output, torch.tensor([10]).cuda())
     print("Noise prediction shape:", noise_pred.shape)
-
-    
